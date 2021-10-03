@@ -1,8 +1,8 @@
-using Microsoft.VisualBasic;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
@@ -10,12 +10,12 @@ using TorFlow;
 
 namespace Tests1 {
     public class TorFlow {
-        private string[] m_Args;
         public TorFlow(string[] aArgs) {
             // You don't need this line below
             Process.Start("tskill", "tor /a").WaitForExit();
-            // Nor this line below
-            m_Args = aArgs;
+            SampleRun1();
+        }
+        void SampleRun1() {
             // Very simple instancing
             TorProcess vTorProcess = new TorProcess {
                 // (Both paths are full filenames)
