@@ -1,10 +1,10 @@
-using Microsoft.VisualBasic;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace TorFlow {
@@ -88,7 +88,7 @@ namespace TorFlow {
                 // TOR enjoys rap
                 if (vLine.Contains("rapped ")) {
                     // Get % of how much it rapped
-                    string vStrInt = Strings.Split(vLine, "rapped ")[1].Split('%')[0];
+                    string vStrInt = Regex.Split(vLine, "rapped ")[1].Split('%')[0];
                     // Parse % and pass to event OnRapping
                     OnRapping?.Invoke(this, int.Parse(vStrInt));
                     // If TOR rapped enough, report READY
@@ -139,7 +139,7 @@ namespace TorFlow {
                 foreach (HiddenService vHS in TorHiddenServices) {
                     vOutput += "HiddenServiceDir " + vHS.Directory + "\r\n";
                     foreach (HiddenServicePort vPort in vHS.Ports)
-                        vOutput += "HiddenServicePort " + vPort.Onion + " " + vPort.Server + "\r\n";
+                        vOutput += "HiddenServicePort " + vPort.OnionPort + " " + vPort.ServerPort + "\r\n";
                 }
                 return vOutput;
             }
@@ -172,15 +172,20 @@ namespace TorFlow {
                 return vHS;
             }
         }
+        /// <summary>No port forwarding required, worry not.</summary>
         public class HiddenServicePort {
-            public int Onion = 80, Server = 8080;
-            /// <summary>No port forwarding required, worry not.</summary>
-            /// <param name="aOnion">Port to access onion address</param>
-            /// <param name="aServer">Port of server (localhost?)</param>
-            public HiddenServicePort(int aOnion, int aServer) { Onion = aOnion; Server = aServer; }
-            public HiddenServicePort(int aServer) { Server = aServer; }
+            public int OnionPort = 80, ServerPort = 8080;
+            public string ServerHost = "";
+            public HiddenServicePort(int aOnionPort, int aServerPort, string aServerHost) { OnionPort = aOnionPort; ServerPort = aServerPort; ServerHost = aServerHost; }
+            public HiddenServicePort(int aOnionPort, int aServerPort) { OnionPort = aOnionPort; ServerPort = aServerPort; }
+            public HiddenServicePort(int aServerPort) { ServerPort = aServerPort; }
             public HiddenServicePort() { }
-            public override string ToString() { return Onion + " " + Server; }
+            public override string ToString() {
+                string vStr = ServerHost;
+                if (0 < vStr.Length)
+                    vStr += ":";
+                return OnionPort + " " + vStr + ServerPort;
+            }
         }
         public class HiddenService {
             public string Directory;
@@ -199,7 +204,7 @@ namespace TorFlow {
                 if (1 == aWhat) {
                     string vOut = "";
                     for (int vI = 0; vI < Ports.Count; vI++)
-                        vOut += Ports[vI].Onion + ", ";
+                        vOut += Ports[vI].OnionPort + ", ";
                     // Remove trailing comma
                     if (vOut.Length > 3)
                         return vOut.Substring(0, vOut.Length - 2);
