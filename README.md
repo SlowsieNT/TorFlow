@@ -1,4 +1,4 @@
-# TorFlow .NET 3.5+
+# TorFlow
 #### License: Unlicense (No conditions)
 
 ### Requiremets
