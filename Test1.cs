@@ -13,7 +13,7 @@ namespace Tests1 {
         private string[] m_Args;
         public TorFlow(string[] aArgs) {
             // You don't need this line below
-            Interaction.Shell("tskill tor /a");
+            Process.Start("tskill", "tor /a").WaitForExit();
             // Nor this line below
             m_Args = aArgs;
             // Very simple instancing
