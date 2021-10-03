@@ -10,6 +10,10 @@ using System.Threading;
 namespace TorFlow {
     /// <summary>All events are sync, so call new Threads within events</summary>
     public class TorProcess {
+        static string[] m_psStates = "Error,Starting,Running,Ready,Exited,Restarting".Split(',');
+        public static string GetStateAsText(int aState) {
+            return m_psStates[aState];
+        }
         public delegate void TorDelegateDef(TorProcess aTorProc);
         public delegate void TorDelegateInt(TorProcess aTorProc, int aValue);
         public delegate void TorDelegateString(TorProcess aTorProc, string aValue);
