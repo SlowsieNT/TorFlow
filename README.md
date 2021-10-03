@@ -2,7 +2,7 @@
 #### License: Unlicense (No conditions)
 
 ### Requirements
-- Binary files of [TOR (Use official!)](https://github.com/SlowsieNT/TorFlow/releases/tag/resources)
+- Binary files of [TOR (Use official instead!)](https://github.com/SlowsieNT/TorFlow/releases/tag/resources)
 - .NET 3.5+
 
 __Example__:
