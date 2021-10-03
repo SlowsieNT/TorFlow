@@ -1,5 +1,5 @@
 # TorFlow .NET 3.5+
-Just testing
+#### License: Unlicense (No conditions)
 
 Example:
 ```cs
