@@ -1,7 +1,7 @@
 # TorFlow
 #### License: Unlicense (No conditions)
 
-### Requiremets
+### Requirements
 - Binary files of TOR
 - .NET 3.5+
 
