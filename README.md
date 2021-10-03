@@ -1,6 +1,11 @@
 # TorFlow .NET 3.5+
 #### License: Unlicense (No conditions)
-Example:
+
+### Requiremets
+- Binary files of TOR
+- .NET 3.5+
+
+__Example__:
 ```cs
 TorProcess vTorProcess = new TorProcess {
   // (Both paths are full filenames)
