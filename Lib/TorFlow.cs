@@ -8,23 +8,35 @@ using System.Text.RegularExpressions;
 using System.Threading;
 
 namespace TorFlow {
+
     /// <summary>All events are sync, so call new Threads within events</summary>
     public class TorProcess {
         static string[] m_psStates = "Error,Starting,Running,Ready,Exited,Restarting".Split(',');
         public static string GetStateAsText(int aState) {
             return m_psStates[aState];
         }
+        /// <summary>Return state, use int/null to avoid errors</summary>
+        public string this[object aState] {
+            get {
+                if (null == aState)
+                    return m_psStates[State];
+                return m_psStates[(int)aState];
+            }
+        }
         public delegate void TorDelegateDef(TorProcess aTorProc);
         public delegate void TorDelegateInt(TorProcess aTorProc, int aValue);
         public delegate void TorDelegateString(TorProcess aTorProc, string aValue);
+        public delegate void TorDelegateIntArray(TorProcess aTorProc, int[] aValue);
         public event TorDelegateDef OnReady;
         public event TorDelegateDef OnClose;
         public event TorDelegateDef OnRestarting;
         public event TorDelegateInt OnState;
+        public event TorDelegateIntArray OnTorrcPreparedPorts;
         public event TorDelegateString OnLine;
         public event TorDelegateInt OnRapping;
         public int Id;
         public bool Persist = true;
+        /// <summary>Doesn't work for hidden service class</summary>
         public bool MakeDirs = true;
         public bool LogErrors = false; // debug
         public string StrErrLog = "";
@@ -36,8 +48,12 @@ namespace TorFlow {
         /// </summary>
         public int State;
         public int RestartDelay = 1025; // [ms]
-        public TorConfig Torrc = new TorConfig();
+        public TorConfig Torrc;
         public Process m_Process;
+        public TorProcess()
+        {
+            Torrc = new TorConfig(this);
+        }
         /// <summary>Will run as Thread.</summary>
         public void Run() {
             ThreadPool.QueueUserWorkItem(__Run);
@@ -48,8 +64,10 @@ namespace TorFlow {
         }
         void __Run(object aState) {
             // Make sure all possible dirs are made
-            IOUtils.MakeDirAll(IOUtils.ToDirs(TorrcFilePath));
-            IOUtils.MakeDirAll(Torrc.DataDirectory);
+            if (MakeDirs) {
+                IOUtils.MakeDirAll(IOUtils.ToDirs(TorrcFilePath));
+                IOUtils.MakeDirAll(Torrc.DataDirectory);
+            }
             // Attempt to write torrc file
             IOUtils.WriteAllText(TorrcFilePath, "" + Torrc);
             // Check if all paths exist
@@ -73,7 +91,8 @@ namespace TorFlow {
                 m_Process.Start();
                 Id = m_Process.Id;
             } catch (Exception vEx) {
-                StrErrLog += "\r\n[m_Process.Start]:\r\n" + vEx + "\r\n";
+                if (LogErrors)
+                    StrErrLog += "\r\n[m_Process.Start]:\r\n" + vEx + "\r\n";
                 OnState?.Invoke(this, State = 0);
                 return;
             }
@@ -110,9 +129,14 @@ namespace TorFlow {
             }
         }
         public class TorConfig {
-            public TorConfig() {
+            TorProcess m_TProc;
+            public TorConfig(TorProcess aTorProc) {
+                m_TProc = aTorProc;
                 ThreadPool.QueueUserWorkItem(__ListenHostnames);
             }
+
+            public int PreparePortCount = 0;
+            public int[] PreparedPorts;
             void __ListenHostnames(object state) {
                 while (true) {
                     try {
@@ -122,16 +146,31 @@ namespace TorFlow {
                     Thread.Sleep(480);
                 }
             }
+            public void PreparePorts() {
+                List<int> vPorts = new List<int>(new int[] { TcpUtils.GetOpenPort() });
+                for (int vI = 0; vI < PreparePortCount; vI++)
+                    vPorts.Add(TcpUtils.GetOpenPort(1 + vPorts[vI]));
+                PreparedPorts = vPorts.ToArray();
+            }
             public override string ToString() {
+                if (null == PreparedPorts) {
+                    PreparePorts();
+                    m_TProc.OnTorrcPreparedPorts?.Invoke(m_TProc, PreparedPorts);
+                }
+                if (0 == PreparedPorts.Length) {
+                    PreparePorts();
+                    m_TProc.OnTorrcPreparedPorts?.Invoke(m_TProc, PreparedPorts);
+                }
                 string vOutput = "";
                 if ("auto" == SocksPort)
-                    SocksPort = "" + TcpUtils.GetOpenPort();
+                    SocksPort = "" + PreparedPorts[0];
                 if (AvoidDiskWrites) vOutput += "AvoidDiskWrites 1" + "\r\n";
                 // GeoIP checks before alloc
                 if (File.Exists(GeoIPFile)) vOutput += "GeoIPFile " + GeoIPFile + "\r\n";
                 if (File.Exists(GeoIPv6File)) vOutput += "GeoIPv6File " + GeoIPv6File + "\r\n";
                 // DataDirectory before alloc
-                IOUtils.MakeDirAll(DataDirectory);
+                if (m_TProc.MakeDirs)
+                    IOUtils.MakeDirAll(DataDirectory);
                 if (Directory.Exists(DataDirectory))
                     vOutput += "DataDirectory " + DataDirectory + "\r\n";
                 vOutput += "ControlPort " + ControlPort + " " + ControlPortFlags + "\r\n";
@@ -194,6 +233,7 @@ namespace TorFlow {
             public List<HiddenServicePort> Ports = new List<HiddenServicePort>();
             public HiddenService(string aDir) {
                 Directory = aDir;
+                IOUtils.MakeDirAll(aDir);
             }
             public HiddenService AddPort(int vOnionPort, int vServerPort) {
                 Ports.Add(new HiddenServicePort(vOnionPort, vServerPort));
