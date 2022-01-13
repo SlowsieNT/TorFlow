@@ -9,60 +9,120 @@ using System.Threading;
 
 namespace TorFlow {
 
-    /// <summary>All events are sync, so call new Threads within events</summary>
+    /// <summary>Most events are background threads, remember: use try-catch.</summary>
     public class TorProcess {
         static string[] m_psStates = "Error,Starting,Running,Ready,Exited,Restarting".Split(',');
         public static string GetStateAsText(int aState) {
             return m_psStates[aState];
         }
-        /// <summary>Return state, use int/null to avoid errors</summary>
+        /// <summary>Return state, use int/null to avoid errors.
+        /// <br>null returns current state as text.</br></summary>
         public string this[object aState] {
             get {
                 if (null == aState)
                     return m_psStates[State];
-                return m_psStates[(int)aState];
+                // Disable out of bounds
+                if (m_psStates.Length > (ushort)aState)
+                    return m_psStates[(int)aState];
+                return this[null];
             }
         }
         public delegate void TorDelegateDef(TorProcess aTorProc);
         public delegate void TorDelegateInt(TorProcess aTorProc, int aValue);
         public delegate void TorDelegateString(TorProcess aTorProc, string aValue);
+        public delegate void TorDelegateEx(TorProcess aTorProc, object aValue, int aDataType);
+        public delegate void TorDelegateHS(TorProcess aTorProc, HiddenService aValue);
         public delegate void TorDelegateIntArray(TorProcess aTorProc, int[] aValue);
+        /// <summary>Called when tor finishes bootstrapping.</summary>
         public event TorDelegateDef OnReady;
         public event TorDelegateDef OnClose;
         public event TorDelegateDef OnRestarting;
         public event TorDelegateInt OnState;
+        public event TorDelegateHS OnHiddenServiceCreated;
+        /// <summary>Silence is golden.</summary>
+        public event TorDelegateEx OnError;
+        /// <summary>This event is not background thread.
+        /// <br>Useful when more ports are needed.</br></summary>
         public event TorDelegateIntArray OnTorrcPreparedPorts;
+        /// <summary>Called every ReadLine of tor output</summary>
         public event TorDelegateString OnLine;
+        /// <summary>On Bootstrapping</summary>
         public event TorDelegateInt OnRapping;
+        /// <summary>Process ID</summary>
         public int Id;
+        /// <summary>Used if tor is not intended to be terminated at all</summary>
         public bool Persist = true;
         /// <summary>Doesn't work for hidden service class</summary>
         public bool MakeDirs = true;
-        public bool LogErrors = false; // debug
-        public string StrErrLog = "";
+        /// <summary>Full File path to tor executable</summary>
         public string ExecutablePath = "dir/tor.exe";
+        /// <summary>Full File path to torrc</summary>
         public string TorrcFilePath = "dir/torrc";
         /// <summary>States:
         /// 0 Error, 1 BeforeStart, 2 Running,
         /// 3 Ready, 4 Exited, 5 Restarting
         /// </summary>
         public int State;
-        public int RestartDelay = 1025; // [ms]
+        /// <summary>Time to wait [ms] before reinitiating tor process.</summary>
+        public int RestartDelay = 1025;
         public TorConfig Torrc;
         public Process m_Process;
-        public TorProcess()
-        {
+        public TorProcess() {
             Torrc = new TorConfig(this);
         }
-        /// <summary>Will run as Thread.</summary>
+        /// <summary>Run the background Thread.</summary>
         public void Run() {
-            ThreadPool.QueueUserWorkItem(__Run);
+            ThreadPool.QueueUserWorkItem(UserWorkItemRun);
         }
+        /// <summary>Terminate Process, will reinitiate if abPersist is false.</summary>
         public void Kill(bool abPersist=false) {
             Persist = abPersist;
             m_Process.Kill();
         }
-        void __Run(object aState) {
+        void FakeAsync(WaitCallback aAction) {
+            ThreadPool.QueueUserWorkItem(aAction);
+        }
+        void InvokeOnHiddenServiceCreated(HiddenService aHiddenService) {
+            FakeAsync(delegate (object aState) {
+                OnHiddenServiceCreated?.Invoke(this, aHiddenService);
+            });
+        }
+        void InvokeOnError(object aValue, int aDataType) {
+            FakeAsync(delegate (object aState) {
+                OnError?.Invoke(this, aValue, aDataType);
+            });
+        }
+        void InvokeOnState(int aValue) {
+            FakeAsync(delegate (object aState) {
+                OnState?.Invoke(this, aValue);
+            });
+        }
+        void InvokeOnRapping(int aValue) {
+            FakeAsync(delegate (object aState) {
+                OnRapping?.Invoke(this, aValue);
+            });
+        }
+        void InvokeOnReady() {
+            FakeAsync(delegate (object aState) {
+                OnReady?.Invoke(this);
+            });
+        }
+        void InvokeOnLine(string aValue) {
+            FakeAsync(delegate (object aState) {
+                OnLine?.Invoke(this, aValue);
+            });
+        }
+        private void InvokeOnClose() {
+            FakeAsync(delegate (object aState) {
+                OnClose?.Invoke(this);
+            });
+        }
+        private void InvokeOnRestarting() {
+            FakeAsync(delegate (object aState) {
+                OnRestarting?.Invoke(this);
+            });
+        }
+        void UserWorkItemRun(object aState) {
             // Make sure all possible dirs are made
             if (MakeDirs) {
                 IOUtils.MakeDirAll(IOUtils.ToDirs(TorrcFilePath));
@@ -71,12 +131,12 @@ namespace TorFlow {
             // Attempt to write torrc file
             IOUtils.WriteAllText(TorrcFilePath, "" + Torrc);
             // Check if all paths exist
-            if (LogErrors && !File.Exists(TorrcFilePath))
-                StrErrLog += "TorrcPath 404:" + TorrcFilePath + "\r\n";
-            if (LogErrors && !File.Exists(ExecutablePath))
-                StrErrLog += "ExecutablePath 404:" + ExecutablePath + "\r\n";
-            if (LogErrors && !Directory.Exists(Torrc.DataDirectory))
-                StrErrLog += "Torrc.DataDirectory 404:" + Torrc.DataDirectory + "\r\n";
+            if (!File.Exists(TorrcFilePath))
+                InvokeOnError(TorrcFilePath + "\r\n", 0);
+            if (!File.Exists(ExecutablePath))
+                InvokeOnError(ExecutablePath + "\r\n", 0);
+            if (!Directory.Exists(Torrc.DataDirectory))
+                InvokeOnError(Torrc.DataDirectory + "\r\n", 0);
             m_Process = new Process {
                 StartInfo = new ProcessStartInfo {
                     FileName = ExecutablePath,
@@ -86,64 +146,69 @@ namespace TorFlow {
                     CreateNoWindow = true
                 }
             };
-            OnState?.Invoke(this, State = 1);
+            InvokeOnState(State = 1);
             try {
                 m_Process.Start();
                 Id = m_Process.Id;
             } catch (Exception vEx) {
-                if (LogErrors)
-                    StrErrLog += "\r\n[m_Process.Start]:\r\n" + vEx + "\r\n";
-                OnState?.Invoke(this, State = 0);
+                InvokeOnState(State = 0);
+                InvokeOnError(vEx, 1);
                 return;
             }
             // Report that TOR is alive and running
-            OnState?.Invoke(this, 2);
+            InvokeOnState(State = 2);
             // While running, and console output incoming...
             while (!m_Process.StandardOutput.EndOfStream) {
                 // Read console output line by line
                 string vLine = m_Process.StandardOutput.ReadLine();
                 // Report each line to OnLine event
-                OnLine?.Invoke(this, vLine);
+                InvokeOnLine(vLine);
                 // TOR enjoys rap
                 if (vLine.Contains("rapped ")) {
                     // Get % of how much it rapped
                     string vStrInt = Regex.Split(vLine, "rapped ")[1].Split('%')[0];
                     // Parse % and pass to event OnRapping
-                    OnRapping?.Invoke(this, int.Parse(vStrInt));
+                    InvokeOnRapping(int.Parse(vStrInt));
                     // If TOR rapped enough, report READY
                     if ("100" == vStrInt) {
-                        OnState?.Invoke(this, State = 3);
-                        OnReady?.Invoke(this);
+                        InvokeOnState(State = 3);
+                        InvokeOnReady();
                     }
                 }
             }
             // Report its refusal to rap
-            OnState?.Invoke(this, State = 4);
-            OnClose?.Invoke(this);
+            InvokeOnState(State = 4);
+            InvokeOnClose();
             // Run tor again if escalated
             if (Persist) {
                 Thread.Sleep(RestartDelay);
-                OnState?.Invoke(this, State = 5);
-                OnRestarting?.Invoke(this);
-                __Run(aState);
+                InvokeOnState(State = 5);
+                InvokeOnRestarting();
+                UserWorkItemRun(aState);
             }
         }
+
         public class TorConfig {
             TorProcess m_TProc;
             public TorConfig(TorProcess aTorProc) {
                 m_TProc = aTorProc;
-                ThreadPool.QueueUserWorkItem(__ListenHostnames);
+                ThreadPool.QueueUserWorkItem(UserWorkItemListenHostnames);
             }
-
             public int PreparePortCount = 0;
             public int[] PreparedPorts;
-            void __ListenHostnames(object state) {
+            void UserWorkItemListenHostnames(object state) {
                 while (true) {
-                    try {
-                        foreach (HiddenService vHS in TorHiddenServices)
-                            vHS.Hostname = ("" + IOUtils.ReadAllText(vHS.Directory + "/Hostname")).Trim();
-                    } catch { }
-                    Thread.Sleep(480);
+                    for (int vI = 0; vI < TorHiddenServices.Count; vI++) {
+                        var vHS = TorHiddenServices[vI];
+                        if (vHS != null && default == vHS.Hostname) {
+                            var vFileName = vHS.Directory + "/hostname";
+                            // Attempt to read hostname.
+                            vHS.Hostname = IOUtils.ReadAllText(vFileName);
+                            if (default != vHS.Hostname)
+                                m_TProc.InvokeOnHiddenServiceCreated(vHS);
+                        }
+                    }
+                    Thread.Sleep(1000/50); // 50 Op/s
                 }
             }
             public void PreparePorts() {
@@ -183,6 +248,7 @@ namespace TorFlow {
                 return vOutput;
             }
             public bool AvoidDiskWrites = true; // default=0
+            /// <summary>If not found, will attempt to create automatically.</summary>
             public string DataDirectory;
             public string ControlPort = "auto";
             public string ControlPortFlags = "";
@@ -205,13 +271,18 @@ namespace TorFlow {
                 CustomLines.Add(aValue);
                 return CustomLines.Count - 1;
             }
+            /// <summary>
+            /// Used if hosting onion service, no port forwarding required. 
+            /// </summary>
+            /// <param name="aDirectory">If not found, will attempt to create automatically.</param>
+            /// <returns>HiddenService always.</returns>
             public HiddenService AddHiddenService(string aDirectory) {
                 HiddenService vHS = new HiddenService(aDirectory);
                 TorHiddenServices.Add(vHS);
                 return vHS;
             }
         }
-        /// <summary>No port forwarding required, worry not.</summary>
+        /// <summary>No port forwarding required.</summary>
         public class HiddenServicePort {
             public int OnionPort = 80, ServerPort = 8080;
             public string ServerHost = "";
@@ -275,19 +346,22 @@ namespace TorFlow {
         }
         public static bool MakeDirAll(string aDirname) {
             try {
-                Directory.CreateDirectory(aDirname);
+                if (!Directory.Exists(aDirname))
+                    Directory.CreateDirectory(aDirname);
                 return true;
             } catch { return false; }
         }
         public static bool DeleteFile(string aPath) {
             try {
-                File.Delete(aPath);
+                if (File.Exists(aPath))
+                    File.Delete(aPath);
                 return true;
             } catch { return false; }
         }
         public static bool DeleteDir(string aPath) {
             try {
-                Directory.Delete(aPath, true);
+                if (Directory.Exists(aPath))
+                    Directory.Delete(aPath, true);
                 return true;
             } catch { return false; }
         }
@@ -299,6 +373,7 @@ namespace TorFlow {
         }
         public static string ReadAllText(string aFilename) {
             try {
+                if (!File.Exists(aFilename)) return default;
                 return File.ReadAllText(aFilename);
             } catch { return default; }
         }
