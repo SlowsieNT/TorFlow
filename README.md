@@ -21,6 +21,8 @@ vTorProcess.Torrc.AddHiddenService("etc/website02").AddPort(80, 8080);
 vTorProcess.OnLine += TorProcess1_OnLine;
 vTorProcess.OnReady += TorProcess1_OnReady;
 vTorProcess.OnState += TorProcess1_OnState;
+// To get hostname of onion, best to use this:
+vTorProcess.OnHiddenServiceCreated += TorProcess1_OnHiddenServiceCreated;
 // Set data directory where the tor is supposed to write files
 vTorProcess.Torrc.DataDirectory = "etc/TorData";
 // Run the Thread
