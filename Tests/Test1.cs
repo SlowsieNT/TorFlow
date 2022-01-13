@@ -11,7 +11,9 @@ using TorFlow;
 namespace Tests1 {
     public class TorFlow {
         public TorFlow(string[] aArgs) {
-            // You don't need this line below
+            // NOTE: You don't need to kill tor,
+            // is usually independent tor instance.
+            // Feel free to remove this line:
             Process.Start("tskill", "tor /a").WaitForExit();
             SampleRun1();
         }
@@ -31,25 +33,24 @@ namespace Tests1 {
             vTorProcess.OnLine += TorProcess1_OnLine;
             vTorProcess.OnReady += TorProcess1_OnReady;
             vTorProcess.OnState += TorProcess1_OnState;
+            vTorProcess.OnHiddenServiceCreated += VTorProcess_OnHiddenServiceCreated;
             // Set data directory where the tor is supposed to write files
             vTorProcess.Torrc.DataDirectory = "etc/TorData";
             // Run the Thread
             vTorProcess.Run();
         }
 
+        private void VTorProcess_OnHiddenServiceCreated(TorProcess aTorProc, TorProcess.HiddenService aValue) {
+            Console.WriteLine(aValue.Hostname.Trim() + ":" + aValue.ToString(1));
+        }
+
         private void TorProcess1_OnState(TorProcess aTorProc, int aValue) {
-            if (0 == aValue) Console.WriteLine(aTorProc.StrErrLog);
             Console.Title = TorProcess.GetStateAsText(aValue);
         }
 
         private void TorProcess1_OnReady(TorProcess aTorProc) {
-            Console.Clear();
+            //Console.Clear();
             Console.Title = "ONIONs served!!!";
-            Console.WriteLine("\r\n[Hidden Websites]");
-            foreach (var vHS in aTorProc.Torrc.TorHiddenServices) {
-                if (vHS.Hostname.Length > 0)
-                    Console.WriteLine(vHS.Hostname + ":" + vHS.ToString(1));
-            }
             // KILL THE TOR ASAP
             aTorProc.Kill();
         }
