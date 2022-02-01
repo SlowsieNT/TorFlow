@@ -1,5 +1,6 @@
 # TorFlow (Updated: 13-Jan-2022)
-#### License: Unlicense (No conditions)
+### This is free and unencumbered software released into the public domain.
+
 
 ### Requirements
 - Binary files of [TOR (Use official instead!)](https://github.com/SlowsieNT/TorFlow/releases/tag/resources)
