@@ -1,7 +1,7 @@
 # TorFlow (Updated: 13-Jan-2022)
 
 ## License
-0-BSD<br>
+Unlicense<br>
 
 ### Requirements
 - Binary files of [TOR (Use official instead!)](https://github.com/SlowsieNT/TorFlow/releases/tag/resources)
